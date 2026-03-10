@@ -15,10 +15,10 @@ async function fetchChart(ticker: string, range: string, interval: string): Prom
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}`;
   const res = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept': 'application/json',
     },
-    next: { revalidate: 300 }, // cache 5 min
+    cache: 'no-store',
   });
   if (!res.ok) throw new Error(`Yahoo Finance HTTP ${res.status} for ${ticker}`);
   return res.json();

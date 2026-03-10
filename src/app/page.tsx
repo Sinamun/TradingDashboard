@@ -54,12 +54,25 @@ function pnlSign(n: number | null) {
 }
 
 export default async function DashboardPage() {
-  const rows = (await sql`
-    SELECT id, ticker, name, yahoo_ticker, platform, direction, entry_price, quantity, opened_at, source, thesis
-    FROM positions
-    WHERE status = 'open'
-    ORDER BY opened_at DESC
-  `) as Position[];
+  let rows: Position[] = [];
+  try {
+    rows = (await sql`
+      SELECT id, ticker, name, yahoo_ticker, platform, direction, entry_price, quantity, opened_at, source, thesis
+      FROM positions
+      WHERE status = 'open'
+      ORDER BY opened_at DESC
+    `) as Position[];
+  } catch (e) {
+    console.error('DB query failed:', e);
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-400 mb-2">Database Error</h1>
+          <p className="text-gray-400">Could not connect to the database. Check DATABASE_URL.</p>
+        </div>
+      </div>
+    );
+  }
 
   const yahooTickers = rows.map((r) => r.yahoo_ticker);
 
