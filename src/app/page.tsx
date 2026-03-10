@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { sql, dbError } from '@/lib/db';
-import { fetchQuotes, fetchWeeklyChange } from '@/lib/prices';
+import { fetchQuotes, fetchWeeklyChange, fetchExchangeRates, ExchangeRates } from '@/lib/prices';
 import PortfolioClient, { EnrichedPosition } from '@/app/components/PortfolioClient';
 
 interface RawPosition {
@@ -21,6 +21,16 @@ interface RawPosition {
   strike_price: string | null;
   expiry_date: unknown; // may be Date object or string from DB driver
   underlying_ticker: string | null;
+  currency: string | null;
+}
+
+function toUsd(amount: number, currency: string, rates: ExchangeRates): number {
+  switch (currency) {
+    case 'EUR': return amount * rates.EUR;
+    case 'GBP': return amount * rates.GBP;
+    case 'GBX': return (amount / 100) * rates.GBP; // pence → GBP → USD
+    default: return amount; // USD
+  }
 }
 
 export default async function DashboardPage() {
@@ -40,7 +50,8 @@ export default async function DashboardPage() {
   try {
     rows = (await sql`
       SELECT id, ticker, name, yahoo_ticker, platform, direction, entry_price, quantity, opened_at, source, thesis,
-             asset_type, option_type, strike_price, expiry_date, underlying_ticker
+             asset_type, option_type, strike_price, expiry_date, underlying_ticker,
+             COALESCE(currency, 'USD') AS currency
       FROM positions
       WHERE status = 'open'
       ORDER BY opened_at DESC
@@ -61,11 +72,13 @@ export default async function DashboardPage() {
 
   let quotes = new Map<string, import('@/lib/prices').QuoteResult>();
   let weeklyChanges = new Map<string, import('@/lib/prices').WeeklyChangeResult>();
+  let rates: ExchangeRates = { EUR: 1.08, GBP: 1.27 };
 
   try {
-    [quotes, weeklyChanges] = await Promise.all([
+    [quotes, weeklyChanges, rates] = await Promise.all([
       fetchQuotes(yahooTickers),
       fetchWeeklyChange(yahooTickers),
+      fetchExchangeRates(),
     ]);
   } catch {
     console.error('Failed to fetch prices from Yahoo Finance');
@@ -86,6 +99,10 @@ export default async function DashboardPage() {
     const prevClose = quote?.previousClose ?? null;
     const weekAgo = weekly?.weekAgoClose ?? null;
 
+    // Use DB currency; fall back to what Yahoo Finance reported
+    const currency = (pos.currency ?? quote?.currency ?? 'USD').toUpperCase();
+
+    // Native-currency values (GBX = pence)
     const marketValue = current !== null ? current * qty * contractMultiplier : null;
     const costBasis = entry * qty * contractMultiplier;
     const totalPnlAbs = current !== null ? (current - entry) * qty * contractMultiplier * dirMultiplier : null;
@@ -106,6 +123,17 @@ export default async function DashboardPage() {
       current !== null && weekAgo !== null
         ? ((current - weekAgo) / weekAgo) * 100 * dirMultiplier
         : null;
+
+    // USD-converted values for totals and P&L $ display
+    const marketValueUsd = marketValue !== null ? toUsd(marketValue, currency, rates) : null;
+    const costBasisUsd = toUsd(costBasis, currency, rates);
+    const totalPnlAbsUsd = totalPnlAbs !== null ? toUsd(totalPnlAbs, currency, rates) : null;
+    const dailyPnlAbsUsd = dailyPnlAbs !== null ? toUsd(dailyPnlAbs, currency, rates) : null;
+    const weeklyPnlAbsUsd = weeklyPnlAbs !== null ? toUsd(weeklyPnlAbs, currency, rates) : null;
+    const prevValueUsd =
+      prevClose !== null ? toUsd(prevClose * qty * contractMultiplier, currency, rates) : null;
+    const weekValueUsd =
+      weekAgo !== null ? toUsd(weekAgo * qty * contractMultiplier, currency, rates) : null;
 
     // Normalize expiry_date: DB may return a Date object or ISO string
     let expiryDate: string | null = null;
@@ -130,19 +158,27 @@ export default async function DashboardPage() {
       strike_price: pos.strike_price,
       expiry_date: expiryDate,
       underlying_ticker: pos.underlying_ticker,
+      currency,
       entry,
       qty,
       current,
       prevClose,
       weekAgo,
       marketValue,
+      marketValueUsd,
       costBasis,
+      costBasisUsd,
       totalPnlAbs,
       totalPnlPct,
+      totalPnlAbsUsd,
       dailyPnlAbs,
       dailyPnlPct,
+      dailyPnlAbsUsd,
       weeklyPnlAbs,
       weeklyPnlPct,
+      weeklyPnlAbsUsd,
+      prevValueUsd,
+      weekValueUsd,
     };
   });
 

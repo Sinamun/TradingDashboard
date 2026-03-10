@@ -4,11 +4,17 @@ export interface QuoteResult {
   previousClose: number | null;
   regularMarketChange: number | null;
   regularMarketChangePercent: number | null;
+  currency: string | null;
 }
 
 export interface WeeklyChangeResult {
   ticker: string;
   weekAgoClose: number | null;
+}
+
+export interface ExchangeRates {
+  EUR: number; // EUR → USD
+  GBP: number; // GBP → USD
 }
 
 async function fetchChart(ticker: string, range: string, interval: string): Promise<unknown> {
@@ -40,6 +46,7 @@ export async function fetchQuotes(yahooTickers: string[]): Promise<Map<string, Q
           currentPrice !== null && previousClose !== null ? currentPrice - previousClose : null;
         const regularMarketChangePercent =
           regularMarketChange !== null && previousClose ? (regularMarketChange / previousClose) * 100 : null;
+        const currency: string | null = meta?.currency ?? null;
 
         results.set(ticker, {
           ticker,
@@ -47,6 +54,7 @@ export async function fetchQuotes(yahooTickers: string[]): Promise<Map<string, Q
           previousClose,
           regularMarketChange,
           regularMarketChangePercent,
+          currency,
         });
       } catch {
         results.set(ticker, {
@@ -55,6 +63,7 @@ export async function fetchQuotes(yahooTickers: string[]): Promise<Map<string, Q
           previousClose: null,
           regularMarketChange: null,
           regularMarketChangePercent: null,
+          currency: null,
         });
       }
     })
@@ -88,4 +97,16 @@ export async function fetchWeeklyChange(yahooTickers: string[]): Promise<Map<str
   );
 
   return results;
+}
+
+export async function fetchExchangeRates(): Promise<ExchangeRates> {
+  const [eurData, gbpData] = await Promise.all([
+    fetchChart('EURUSD=X', '1d', '1d').catch(() => null),
+    fetchChart('GBPUSD=X', '1d', '1d').catch(() => null),
+  ]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const eurUsd: number = (eurData as any)?.chart?.result?.[0]?.meta?.regularMarketPrice ?? 1.08;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const gbpUsd: number = (gbpData as any)?.chart?.result?.[0]?.meta?.regularMarketPrice ?? 1.27;
+  return { EUR: eurUsd, GBP: gbpUsd };
 }

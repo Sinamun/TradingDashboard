@@ -14,19 +14,27 @@ export interface EnrichedPosition {
   strike_price: string | null;
   expiry_date: string | null;
   underlying_ticker: string | null;
+  currency: string;
   entry: number;
   qty: number;
   current: number | null;
   prevClose: number | null;
   weekAgo: number | null;
-  marketValue: number | null;
-  costBasis: number;
-  totalPnlAbs: number | null;
+  marketValue: number | null;       // native currency (GBX = pence)
+  marketValueUsd: number | null;    // USD for totals/sorting
+  costBasis: number;                // native currency
+  costBasisUsd: number;             // USD for totals
+  totalPnlAbs: number | null;       // native currency
   totalPnlPct: number | null;
-  dailyPnlAbs: number | null;
+  totalPnlAbsUsd: number | null;    // USD for display
+  dailyPnlAbs: number | null;       // native currency
   dailyPnlPct: number | null;
-  weeklyPnlAbs: number | null;
+  dailyPnlAbsUsd: number | null;    // USD for display
+  weeklyPnlAbs: number | null;      // native currency
   weeklyPnlPct: number | null;
+  weeklyPnlAbsUsd: number | null;   // USD for display
+  prevValueUsd: number | null;      // USD prev close value for daily % summary
+  weekValueUsd: number | null;      // USD week-ago value for weekly % summary
 }
 
 type SortKey = 'ticker' | 'marketValue' | 'totalPnlPct' | 'dailyPnlPct' | 'weeklyPnlPct';
@@ -59,10 +67,29 @@ function fmt(n: number | null, decimals = 2) {
   return n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
-function fmtPrice(n: number | null) {
+function currencySymbol(currency: string): string {
+  switch (currency) {
+    case 'EUR': return '€';
+    case 'GBP': return '£';
+    case 'GBX': return ''; // pence uses suffix
+    default: return '$';
+  }
+}
+
+function fmtPriceNative(n: number | null, currency: string) {
   if (n === null || isNaN(n)) return '—';
   const decimals = n < 1 ? 6 : n < 100 ? 4 : 2;
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+  const formatted = n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  if (currency === 'GBX') return `${formatted}p`;
+  return `${currencySymbol(currency)}${formatted}`;
+}
+
+function fmtMarketValue(mv: number | null, currency: string) {
+  if (mv === null) return '—';
+  // GBX: display as GBP (divide by 100)
+  const displayValue = currency === 'GBX' ? mv / 100 : mv;
+  const symbol = currency === 'GBX' ? '£' : currencySymbol(currency);
+  return `${symbol}${displayValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function pnlClass(n: number | null) {
@@ -114,13 +141,14 @@ function sortPositions(positions: EnrichedPosition[], key: SortKey, dir: SortDir
         : bVal.localeCompare(aVal);
     }
 
+    // Use USD values for market value sort so cross-currency comparison is meaningful
     const aVal =
-      key === 'marketValue' ? a.marketValue
+      key === 'marketValue' ? a.marketValueUsd
       : key === 'totalPnlPct' ? a.totalPnlPct
       : key === 'dailyPnlPct' ? a.dailyPnlPct
       : a.weeklyPnlPct;
     const bVal =
-      key === 'marketValue' ? b.marketValue
+      key === 'marketValue' ? b.marketValueUsd
       : key === 'totalPnlPct' ? b.totalPnlPct
       : key === 'dailyPnlPct' ? b.dailyPnlPct
       : b.weeklyPnlPct;
@@ -171,24 +199,16 @@ export default function PortfolioClient({
 
   const sorted = useMemo(() => sortPositions(filtered, sortKey, sortDir), [filtered, sortKey, sortDir]);
 
-  // Summary totals for filtered positions
-  const totalValue = filtered.reduce((s, p) => s + (p.marketValue ?? 0), 0);
-  const totalPnlAbs = filtered.reduce((s, p) => s + (p.totalPnlAbs ?? 0), 0);
-  const totalCostBasis = filtered.reduce((s, p) => s + p.costBasis, 0);
+  // Summary totals — all in USD
+  const totalValue = filtered.reduce((s, p) => s + (p.marketValueUsd ?? 0), 0);
+  const totalPnlAbs = filtered.reduce((s, p) => s + (p.totalPnlAbsUsd ?? 0), 0);
+  const totalCostBasis = filtered.reduce((s, p) => s + p.costBasisUsd, 0);
   const totalPnlPct = totalCostBasis > 0 ? (totalPnlAbs / totalCostBasis) * 100 : 0;
-  const totalDailyPnl = filtered.reduce((s, p) => s + (p.dailyPnlAbs ?? 0), 0);
-  const totalPrevValue = filtered.reduce((s, p) => {
-    if (p.prevClose === null) return s;
-    const m = p.asset_type === 'option' ? 100 : 1;
-    return s + p.prevClose * p.qty * m;
-  }, 0);
+  const totalDailyPnl = filtered.reduce((s, p) => s + (p.dailyPnlAbsUsd ?? 0), 0);
+  const totalPrevValue = filtered.reduce((s, p) => s + (p.prevValueUsd ?? 0), 0);
   const totalDailyPct = totalPrevValue > 0 ? (totalDailyPnl / totalPrevValue) * 100 : 0;
-  const totalWeeklyPnl = filtered.reduce((s, p) => s + (p.weeklyPnlAbs ?? 0), 0);
-  const totalWeekValue = filtered.reduce((s, p) => {
-    if (p.weekAgo === null) return s;
-    const m = p.asset_type === 'option' ? 100 : 1;
-    return s + p.weekAgo * p.qty * m;
-  }, 0);
+  const totalWeeklyPnl = filtered.reduce((s, p) => s + (p.weeklyPnlAbsUsd ?? 0), 0);
+  const totalWeekValue = filtered.reduce((s, p) => s + (p.weekValueUsd ?? 0), 0);
   const totalWeeklyPct = totalWeekValue > 0 ? (totalWeeklyPnl / totalWeekValue) * 100 : 0;
 
   function handleSort(key: SortKey) {
@@ -225,7 +245,7 @@ export default function PortfolioClient({
 
   return (
     <>
-      {/* Summary Bar */}
+      {/* Summary Bar — all USD */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryCard
           label="Portfolio Value"
@@ -335,21 +355,25 @@ export default function PortfolioClient({
                         {pos.direction.toUpperCase()}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 text-gray-300">{fmtPrice(pos.entry)}</td>
-                    <td className="px-3 py-2.5 text-white">{fmtPrice(pos.current)}</td>
+                    {/* Entry: native currency */}
+                    <td className="px-3 py-2.5 text-gray-300">{fmtPriceNative(pos.entry, pos.currency)}</td>
+                    {/* Current: native currency */}
+                    <td className="px-3 py-2.5 text-white">{fmtPriceNative(pos.current, pos.currency)}</td>
                     <td className="px-3 py-2.5 text-gray-300">
                       {isOption ? `${Math.round(pos.qty)} ct` : fmt(pos.qty, 4)}
                     </td>
+                    {/* Mkt Value: native currency (GBX shown as GBP) */}
                     <td className="px-3 py-2.5 text-gray-200">
-                      {pos.marketValue !== null
-                        ? `$${pos.marketValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : '—'}
+                      {fmtMarketValue(pos.marketValue, pos.currency)}
                     </td>
-                    <td className={`px-3 py-2.5 ${pnlClass(pos.totalPnlAbs)}`}>{fmtPnlAbs(pos.totalPnlAbs)}</td>
+                    {/* P&L $: USD */}
+                    <td className={`px-3 py-2.5 ${pnlClass(pos.totalPnlAbsUsd)}`}>{fmtPnlAbs(pos.totalPnlAbsUsd)}</td>
                     <td className={`px-3 py-2.5 ${pnlClass(pos.totalPnlPct)}`}>{fmtPnlPct(pos.totalPnlPct)}</td>
-                    <td className={`px-3 py-2.5 ${pnlClass(pos.dailyPnlAbs)}`}>{fmtPnlAbs(pos.dailyPnlAbs)}</td>
+                    {/* Day $: USD */}
+                    <td className={`px-3 py-2.5 ${pnlClass(pos.dailyPnlAbsUsd)}`}>{fmtPnlAbs(pos.dailyPnlAbsUsd)}</td>
                     <td className={`px-3 py-2.5 ${pnlClass(pos.dailyPnlPct)}`}>{fmtPnlPct(pos.dailyPnlPct)}</td>
-                    <td className={`px-3 py-2.5 ${pnlClass(pos.weeklyPnlAbs)}`}>{fmtPnlAbs(pos.weeklyPnlAbs)}</td>
+                    {/* Wk $: USD */}
+                    <td className={`px-3 py-2.5 ${pnlClass(pos.weeklyPnlAbsUsd)}`}>{fmtPnlAbs(pos.weeklyPnlAbsUsd)}</td>
                     <td className={`px-3 py-2.5 ${pnlClass(pos.weeklyPnlPct)}`}>{fmtPnlPct(pos.weeklyPnlPct)}</td>
                   </tr>
                 );
