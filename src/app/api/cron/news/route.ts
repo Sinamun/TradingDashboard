@@ -133,11 +133,52 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Backfill: analyse any existing articles with null sentiment
+  let articlesBackfilled = 0;
+  try {
+    const unanalysed = (await sql`
+      SELECT id, ticker, title FROM news_articles
+      WHERE sentiment IS NULL
+      ORDER BY published_at DESC
+      LIMIT 100
+    `) as Array<{ id: number; ticker: string; title: string }>;
+
+    for (const article of unanalysed) {
+      const info = tickerMap.get(article.ticker);
+      const companyName = info?.companyName ?? article.ticker;
+
+      await sleep(200);
+      const sentiment = await analyseArticle(article.ticker, companyName, article.title);
+
+      if (sentiment.sentiment !== null) {
+        try {
+          await sql`
+            UPDATE news_articles
+            SET
+              sentiment = ${sentiment.sentiment},
+              sentiment_confidence = ${sentiment.confidence},
+              summary = ${sentiment.summary},
+              impact = ${sentiment.impact},
+              relevance = ${sentiment.relevance},
+              tags = ${sentiment.tags}
+            WHERE id = ${article.id}
+          `;
+          articlesBackfilled++;
+        } catch (e) {
+          console.warn(`[cron/news] Backfill update failed for id ${article.id}:`, e);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[cron/news] Backfill query failed:', e);
+  }
+
   return NextResponse.json({
     tickersProcessed,
     articlesFound,
     articlesNew,
     articlesAnalysed,
+    articlesBackfilled,
     completedAt: new Date().toISOString(),
   });
 }
