@@ -8,7 +8,7 @@ export interface SentimentResult {
 }
 
 const GLM_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
-const GLM_MODEL = 'glm-4-flash-250414';
+const GLM_MODEL = 'GLM-5';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -19,10 +19,10 @@ export async function analyseArticle(
   companyName: string,
   articleTitle: string
 ): Promise<SentimentResult> {
-  const apiKey = process.env.GLM_API_KEY;
+  const apiKey = process.env.GLM_KEY;
 
   if (!apiKey) {
-    console.info('[sentiment] GLM_API_KEY not set — skipping analysis');
+    console.info('[sentiment] GLM_KEY not set — skipping analysis');
     return { sentiment: null, confidence: null, summary: null, impact: null, relevance: null, tags: null };
   }
 
