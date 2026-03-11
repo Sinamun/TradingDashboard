@@ -5,23 +5,31 @@ export interface RawArticle {
   published_at: Date;
 }
 
-interface YahooNewsItem {
+interface BraveNewsResult {
   title?: string;
-  link?: string;
-  publisher?: string;
-  providerPublishTime?: number;
+  url?: string;
+  meta_url?: { hostname?: string };
+  age?: string;
+  description?: string;
 }
 
 export async function scrapeNewsForTicker(ticker: string, companyName: string): Promise<RawArticle[]> {
-  // Use Yahoo Finance search API for news — reliable from server-side
-  const query = encodeURIComponent(ticker);
-  const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${query}&newsCount=50`;
+  const apiKey = process.env.BRAVE_BROWSER_SEARCH;
 
-  let newsItems: YahooNewsItem[] = [];
+  if (!apiKey) {
+    console.warn('[news] BRAVE_BROWSER_SEARCH not set — skipping news scrape');
+    return [];
+  }
+
+  // Search for today's news using Brave News Search API
+  const query = encodeURIComponent(`${ticker} ${companyName} stock`);
+  const url = `https://api.search.brave.com/res/v1/news/search?q=${query}&count=20&freshness=pd`;
+
+  let results: BraveNewsResult[] = [];
   try {
     const res = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'X-Subscription-Token': apiKey,
         'Accept': 'application/json',
       },
       cache: 'no-store',
@@ -29,39 +37,60 @@ export async function scrapeNewsForTicker(ticker: string, companyName: string): 
     });
 
     if (!res.ok) {
-      console.warn(`[news] Yahoo Finance search failed for ${ticker}: HTTP ${res.status}`);
+      console.warn(`[news] Brave search failed for ${ticker}: HTTP ${res.status}`);
       return [];
     }
 
-    const data = await res.json() as { news?: YahooNewsItem[] };
-    newsItems = data?.news ?? [];
+    const data = await res.json() as { results?: BraveNewsResult[] };
+    results = data?.results ?? [];
   } catch (e) {
-    console.warn(`[news] Yahoo Finance search error for ${ticker}:`, e instanceof Error ? e.message : e);
+    console.warn(`[news] Brave search error for ${ticker}:`, e instanceof Error ? e.message : e);
     return [];
   }
 
   const articles: RawArticle[] = [];
-  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days
 
-  for (const item of newsItems) {
-    if (!item.title || !item.link) continue;
+  for (const item of results) {
+    if (!item.title || !item.url) continue;
 
-    let published_at: Date;
-    if (item.providerPublishTime) {
-      published_at = new Date(item.providerPublishTime * 1000);
-    } else {
-      continue;
-    }
+    // Parse the "age" field (e.g. "2 hours ago", "15 minutes ago")
+    const published_at = parseAge(item.age);
+    if (!published_at) continue;
 
-    if (published_at < cutoff) continue;
+    const source = item.meta_url?.hostname?.replace(/^www\./, '') ?? null;
 
     articles.push({
       title: item.title,
-      url: item.link,
-      source: item.publisher ?? null,
+      url: item.url,
+      source,
       published_at,
     });
   }
 
   return articles;
+}
+
+function parseAge(age: string | undefined): Date | null {
+  if (!age) return null;
+
+  const now = Date.now();
+  const match = age.match(/(\d+)\s+(second|minute|hour|day|week|month)s?\s+ago/i);
+  if (!match) return null;
+
+  const value = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+
+  const multipliers: Record<string, number> = {
+    second: 1000,
+    minute: 60 * 1000,
+    hour: 60 * 60 * 1000,
+    day: 24 * 60 * 60 * 1000,
+    week: 7 * 24 * 60 * 60 * 1000,
+    month: 30 * 24 * 60 * 60 * 1000,
+  };
+
+  const ms = multipliers[unit];
+  if (!ms) return null;
+
+  return new Date(now - value * ms);
 }
