@@ -8,7 +8,7 @@ export interface SentimentResult {
 }
 
 const API_BASE_URL = 'https://api.openai.com/v1';
-const MODEL = 'gpt-5-mini';
+const MODEL = 'gpt-4o';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
