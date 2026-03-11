@@ -14,7 +14,7 @@ function relativeTime(dateStr: string | null): string {
   return `${days}d ago`;
 }
 
-function SentimentBadge({
+function SentimentPill({
   sentiment,
   confidence,
 }: {
@@ -23,7 +23,7 @@ function SentimentBadge({
 }) {
   if (!sentiment) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-gray-800 text-gray-500 border border-gray-700">
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-gray-800 text-gray-500 border border-gray-700">
         Pending
       </span>
     );
@@ -50,74 +50,169 @@ function SentimentBadge({
   };
 
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${styles[sentiment]}`}>
-      <span className={`h-2 w-2 rounded-full ${dots[sentiment]}`} />
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${styles[sentiment]}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${dots[sentiment]}`} />
       {labels[sentiment]}
-      {pct !== null && <span className="font-normal opacity-80">{pct}%</span>}
+      {pct !== null && <span className="font-normal opacity-75">{pct}%</span>}
     </span>
   );
 }
 
-function TickerBadge({ ticker }: { ticker: string }) {
+interface SentimentCounts {
+  bullish: number;
+  bearish: number;
+  neutral: number;
+}
+
+function computeSentimentCounts(articles: NewsArticle[]): SentimentCounts {
+  return articles.reduce(
+    (acc, a) => {
+      if (a.sentiment === 'bullish') acc.bullish++;
+      else if (a.sentiment === 'bearish') acc.bearish++;
+      else if (a.sentiment === 'neutral') acc.neutral++;
+      return acc;
+    },
+    { bullish: 0, bearish: 0, neutral: 0 }
+  );
+}
+
+function getCardAccent(counts: SentimentCounts): string {
+  const { bullish, bearish } = counts;
+  if (bullish > bearish && bullish > counts.neutral) return 'border-l-emerald-500';
+  if (bearish > bullish && bearish > counts.neutral) return 'border-l-red-500';
+  return 'border-l-gray-600';
+}
+
+function getAccentBg(counts: SentimentCounts): string {
+  const { bullish, bearish } = counts;
+  if (bullish > bearish && bullish > counts.neutral) return 'bg-emerald-500/5';
+  if (bearish > bullish && bearish > counts.neutral) return 'bg-red-500/5';
+  return 'bg-gray-800/30';
+}
+
+function SentimentBreakdown({ counts }: { counts: SentimentCounts }) {
+  const parts: string[] = [];
+  if (counts.bullish > 0) parts.push(`${counts.bullish} Bullish`);
+  if (counts.bearish > 0) parts.push(`${counts.bearish} Bearish`);
+  if (counts.neutral > 0) parts.push(`${counts.neutral} Neutral`);
+  if (parts.length === 0) return null;
+
   return (
-    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-mono font-semibold bg-gray-800 text-gray-300 border border-gray-700">
-      {ticker}
+    <span className="text-xs text-gray-500">
+      {parts.map((part, i) => {
+        const isFirst = i === 0;
+        const color = part.includes('Bullish')
+          ? 'text-emerald-400'
+          : part.includes('Bearish')
+          ? 'text-red-400'
+          : 'text-gray-400';
+        return (
+          <span key={part}>
+            {!isFirst && <span className="mx-1 text-gray-700">·</span>}
+            <span className={color}>{part}</span>
+          </span>
+        );
+      })}
     </span>
   );
 }
 
-function NewsCard({ article }: { article: NewsArticle }) {
+function ArticleRow({ article }: { article: NewsArticle }) {
   const timeStr = relativeTime(article.published_at);
 
   return (
-    <article className="border border-gray-800 rounded-lg bg-gray-900/50 p-4 hover:bg-gray-900/80 transition-colors">
-      {/* Header row: ticker + sentiment */}
-      <div className="flex flex-wrap items-center gap-2 mb-2">
-        <TickerBadge ticker={article.ticker} />
-        <SentimentBadge sentiment={article.sentiment} confidence={article.sentiment_confidence} />
+    <div className="py-3 border-t border-gray-800/60 first:border-t-0">
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-1 mb-1">
+        {/* Title */}
+        <a
+          href={article.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 min-w-0 text-sm font-medium text-gray-200 hover:text-emerald-400 transition-colors duration-150 leading-snug cursor-pointer"
+        >
+          {article.title}
+        </a>
+        {/* Sentiment pill — right of title on wider screens */}
+        <div className="flex-shrink-0">
+          <SentimentPill sentiment={article.sentiment} confidence={article.sentiment_confidence} />
+        </div>
       </div>
 
-      {/* Title */}
-      <a
-        href={article.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block text-sm font-medium text-gray-100 hover:text-emerald-400 transition-colors leading-snug mb-2"
-      >
-        {article.title}
-      </a>
-
       {/* Source + time */}
-      <p className="text-xs text-gray-500 mb-3">
+      <p className="text-xs text-gray-600 mb-1.5">
         {article.source && <span>{article.source}</span>}
         {article.source && timeStr && <span className="mx-1">·</span>}
         {timeStr && <span>{timeStr}</span>}
       </p>
 
-      {/* AI Summary */}
+      {/* AI Summary — 1 line, truncated */}
       {article.summary && (
-        <p className="text-xs text-gray-300 leading-relaxed mb-2">{article.summary}</p>
-      )}
-
-      {/* AI Impact */}
-      {article.impact && (
-        <p className="text-xs text-gray-500 leading-relaxed mb-3">{article.impact}</p>
+        <p className="text-xs text-gray-400 leading-relaxed mb-1.5 line-clamp-1">
+          {article.summary}
+        </p>
       )}
 
       {/* Tags */}
       {article.tags && article.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1 mt-1">
           {article.tags.map((tag) => (
             <span
               key={tag}
-              className="inline-block rounded px-1.5 py-0.5 text-xs text-gray-500 bg-gray-800/60 border border-gray-700/50"
+              className="inline-block rounded px-1.5 py-0.5 text-xs text-gray-600 bg-gray-800/60 border border-gray-700/40"
             >
               {tag}
             </span>
           ))}
         </div>
       )}
-    </article>
+    </div>
+  );
+}
+
+const ARTICLES_VISIBLE_DEFAULT = 3;
+
+function TickerCard({ ticker, articles }: { ticker: string; articles: NewsArticle[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const counts = computeSentimentCounts(articles);
+  const accentBorder = getCardAccent(counts);
+  const accentBg = getAccentBg(counts);
+  const visibleArticles = expanded ? articles : articles.slice(0, ARTICLES_VISIBLE_DEFAULT);
+  const hiddenCount = articles.length - ARTICLES_VISIBLE_DEFAULT;
+
+  return (
+    <div
+      className={`border border-gray-800 border-l-2 ${accentBorder} rounded-lg overflow-hidden`}
+    >
+      {/* Card Header */}
+      <div className={`${accentBg} px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1.5`}>
+        <span className="inline-flex items-center rounded px-2 py-0.5 text-sm font-mono font-bold bg-gray-800 text-gray-200 border border-gray-700">
+          {ticker}
+        </span>
+        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-800/80 text-gray-400 border border-gray-700/60">
+          {articles.length} {articles.length === 1 ? 'article' : 'articles'}
+        </span>
+        <SentimentBreakdown counts={counts} />
+      </div>
+
+      {/* Article rows */}
+      <div className="px-4 bg-gray-900/40">
+        {visibleArticles.map((article) => (
+          <ArticleRow key={article.id} article={article} />
+        ))}
+      </div>
+
+      {/* Expand / collapse */}
+      {articles.length > ARTICLES_VISIBLE_DEFAULT && (
+        <div className="px-4 py-2.5 border-t border-gray-800/60 bg-gray-900/20">
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs text-gray-500 hover:text-gray-300 transition-colors duration-150 cursor-pointer"
+          >
+            {expanded ? '↑ Show less' : `↓ Show ${hiddenCount} more`}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -133,15 +228,28 @@ const SENTIMENT_FILTERS: { value: SentimentFilter; label: string; activeClass: s
 const INACTIVE_PILL = 'bg-gray-800 text-gray-400 border border-gray-700 hover:text-gray-200 hover:border-gray-600';
 
 export default function NewsFeed({ articles }: { articles: NewsArticle[] }) {
-  // Collect unique tickers
   const tickers = Array.from(new Set(articles.map((a) => a.ticker))).sort();
   const [activeTicker, setActiveTicker] = useState<string>('all');
   const [activeSentiment, setActiveSentiment] = useState<SentimentFilter>('all');
 
-  const filtered = articles.filter((a) => {
+  // Filter articles first by ticker, then by sentiment
+  const filteredArticles = articles.filter((a) => {
     const tickerMatch = activeTicker === 'all' || a.ticker === activeTicker;
     const sentimentMatch = activeSentiment === 'all' || a.sentiment === activeSentiment;
     return tickerMatch && sentimentMatch;
+  });
+
+  // Group by ticker, sort groups by most recent article first
+  const groups = filteredArticles.reduce<Record<string, NewsArticle[]>>((acc, a) => {
+    if (!acc[a.ticker]) acc[a.ticker] = [];
+    acc[a.ticker].push(a);
+    return acc;
+  }, {});
+
+  const sortedTickers = Object.keys(groups).sort((a, b) => {
+    const latestA = groups[a][0]?.published_at ?? '';
+    const latestB = groups[b][0]?.published_at ?? '';
+    return latestB.localeCompare(latestA);
   });
 
   return (
@@ -151,7 +259,7 @@ export default function NewsFeed({ articles }: { articles: NewsArticle[] }) {
         <button
           onClick={() => setActiveTicker('all')}
           className={[
-            'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+            'rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 cursor-pointer',
             activeTicker === 'all'
               ? 'bg-emerald-400/20 text-emerald-400 border border-emerald-400/40'
               : INACTIVE_PILL,
@@ -164,7 +272,7 @@ export default function NewsFeed({ articles }: { articles: NewsArticle[] }) {
             key={ticker}
             onClick={() => setActiveTicker(ticker)}
             className={[
-              'rounded-full px-3 py-1 text-xs font-medium font-mono transition-colors',
+              'rounded-full px-3 py-1 text-xs font-medium font-mono transition-colors duration-150 cursor-pointer',
               activeTicker === ticker
                 ? 'bg-emerald-400/20 text-emerald-400 border border-emerald-400/40'
                 : INACTIVE_PILL,
@@ -182,7 +290,7 @@ export default function NewsFeed({ articles }: { articles: NewsArticle[] }) {
             key={value}
             onClick={() => setActiveSentiment(value)}
             className={[
-              'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+              'rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 cursor-pointer',
               activeSentiment === value ? activeClass : INACTIVE_PILL,
             ].join(' ')}
           >
@@ -191,8 +299,8 @@ export default function NewsFeed({ articles }: { articles: NewsArticle[] }) {
         ))}
       </div>
 
-      {/* Article list */}
-      {filtered.length === 0 ? (
+      {/* Grouped ticker cards */}
+      {sortedTickers.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="h-10 w-10 rounded-full bg-gray-800 flex items-center justify-center mb-4">
             <svg
@@ -214,9 +322,9 @@ export default function NewsFeed({ articles }: { articles: NewsArticle[] }) {
           <p className="text-xs text-gray-600">News is refreshed daily at 2pm UK time.</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {filtered.map((article) => (
-            <NewsCard key={article.id} article={article} />
+        <div className="flex flex-col gap-4">
+          {sortedTickers.map((ticker) => (
+            <TickerCard key={ticker} ticker={ticker} articles={groups[ticker]} />
           ))}
         </div>
       )}
