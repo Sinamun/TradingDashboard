@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import PositionModal, { EditValues } from './PositionModal';
 
 export interface EnrichedPosition {
   id: string;
@@ -11,6 +13,8 @@ export interface EnrichedPosition {
   asset_type: 'stock' | 'call' | 'put';
   strike: string | null;
   expiry: string | null;
+  source: string | null;
+  notes: string | null;
   currency: string;
   entry: number;
   qty: number;
@@ -159,6 +163,7 @@ const HEADERS: { label: string; sortKey?: SortKey }[] = [
   { label: 'Day %', sortKey: 'dailyPnlPct' },
   { label: 'Wk £' },
   { label: 'Wk %', sortKey: 'weeklyPnlPct' },
+  { label: '' }, // actions column
 ];
 
 export default function PortfolioClient({
@@ -168,10 +173,14 @@ export default function PortfolioClient({
   positions: EnrichedPosition[];
   updatedAt: string;
 }) {
+  const router = useRouter();
   const [filterAsset, setFilterAsset] = useState<FilterAsset>('all');
   const [filterPlatform, setFilterPlatform] = useState<FilterPlatform>('all');
   const [sortKey, setSortKey] = useState<SortKey>('marketValue');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editValues, setEditValues] = useState<EditValues | undefined>(undefined);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     return allPositions.filter((p) => {
@@ -195,6 +204,51 @@ export default function PortfolioClient({
   const totalWeeklyPnl = filtered.reduce((s, p) => s + (p.weeklyPnlAbsUsd ?? 0), 0);
   const totalWeekValue = filtered.reduce((s, p) => s + (p.weekValueUsd ?? 0), 0);
   const totalWeeklyPct = totalWeekValue > 0 ? (totalWeeklyPnl / totalWeekValue) * 100 : 0;
+
+  function openAddModal() {
+    setEditValues(undefined);
+    setModalOpen(true);
+  }
+
+  function openEditModal(pos: EnrichedPosition) {
+    setEditValues({
+      id: pos.id,
+      ticker: pos.ticker,
+      display_name: pos.display_name,
+      asset_type: pos.asset_type,
+      entry: pos.entry,
+      qty: pos.qty,
+      currency: pos.currency,
+      platform: pos.platform,
+      strike: pos.strike,
+      expiry: pos.expiry,
+      source: pos.source,
+      notes: pos.notes,
+    });
+    setModalOpen(true);
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this position? This cannot be undone.')) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/positions/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        alert(data.error ?? 'Failed to delete position');
+        return;
+      }
+      router.refresh();
+    } catch {
+      alert('Network error — please try again');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  function handleModalSuccess() {
+    router.refresh();
+  }
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
@@ -228,8 +282,40 @@ export default function PortfolioClient({
     { key: 'crypto', label: 'Crypto' },
   ];
 
+  if (allPositions.length === 0) {
+    return (
+      <>
+        <PositionModal
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          onSuccess={handleModalSuccess}
+          editValues={editValues}
+        />
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="mb-4 text-4xl">📭</div>
+          <h2 className="text-lg font-semibold text-gray-300 mb-2">No positions yet</h2>
+          <p className="text-sm text-gray-500 mb-6 max-w-xs">
+            Add your first position to start tracking your portfolio.
+          </p>
+          <button
+            onClick={openAddModal}
+            className="px-5 py-2.5 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-500 transition-colors"
+          >
+            + Add Position
+          </button>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
+      <PositionModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSuccess={handleModalSuccess}
+        editValues={editValues}
+      />
       {/* Summary Bar — all GBP */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryCard
@@ -257,8 +343,15 @@ export default function PortfolioClient({
         />
       </div>
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
+      {/* Filters + Add Button */}
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <button
+          onClick={openAddModal}
+          className="order-first sm:order-last px-4 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-500 transition-colors self-start sm:self-auto whitespace-nowrap"
+        >
+          + Add Position
+        </button>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-gray-600 uppercase tracking-wider mr-1">Type</span>
           {assetFilters.map((f) => (
@@ -285,6 +378,7 @@ export default function PortfolioClient({
           ))}
         </div>
       </div>
+      </div>
 
       {/* Positions Table */}
       <div className="overflow-x-auto rounded-lg border border-gray-800">
@@ -306,7 +400,7 @@ export default function PortfolioClient({
           <tbody className="divide-y divide-gray-800/50">
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-4 py-12 text-center text-gray-500">
+                <td colSpan={14} className="px-4 py-12 text-center text-gray-500">
                   No positions match the current filters.
                 </td>
               </tr>
@@ -353,6 +447,26 @@ export default function PortfolioClient({
                     {/* Wk £: GBP */}
                     <td className={`px-3 py-2.5 ${pnlClass(pos.weeklyPnlAbsUsd)}`}>{fmtPnlAbs(pos.weeklyPnlAbsUsd)}</td>
                     <td className={`px-3 py-2.5 ${pnlClass(pos.weeklyPnlPct)}`}>{fmtPnlPct(pos.weeklyPnlPct)}</td>
+                    {/* Row actions */}
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openEditModal(pos)}
+                          title="Edit position"
+                          className="text-gray-600 hover:text-gray-300 transition-colors text-sm"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => handleDelete(pos.id)}
+                          disabled={deletingId === pos.id}
+                          title="Delete position"
+                          className="text-gray-600 hover:text-red-400 transition-colors text-sm disabled:opacity-40"
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })

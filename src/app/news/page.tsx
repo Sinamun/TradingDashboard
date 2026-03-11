@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { sql, dbError } from '@/lib/db';
 import TabNav from '@/app/components/TabNav';
 import NewsFeed from '@/app/news/components/NewsFeed';
+import UserAvatar from '@/app/components/UserAvatar';
 
 export interface NewsArticle {
   id: string;
@@ -121,6 +122,7 @@ export default async function NewsPage() {
             <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
             <h1 className="text-sm font-semibold tracking-widest text-gray-300 uppercase">Trading Terminal</h1>
           </div>
+          <UserAvatar name={session.user.name ?? null} />
         </div>
       </header>
 

@@ -82,8 +82,16 @@ src/
 │   │   │       └── route.ts        # Better Auth Next.js handler (all auth endpoints)
 │   │   └── cron/
 │   │       └── news/route.ts       # Daily news scraping + AI analysis cron
+│   ├── api/
+│   │   ├── positions/
+│   │   │   ├── route.ts            # POST /api/positions (create position)
+│   │   │   └── [id]/route.ts       # PATCH + DELETE /api/positions/[id]
+│   │   └── user/
+│   │       └── account/route.ts    # DELETE /api/user/account (delete account)
 │   ├── components/
-│   │   ├── PortfolioClient.tsx     # Interactive portfolio table (client)
+│   │   ├── PortfolioClient.tsx     # Interactive portfolio table + modal wiring (client)
+│   │   ├── PositionModal.tsx       # Add/Edit position modal form (client)
+│   │   ├── UserAvatar.tsx          # User avatar with sign-out dropdown (client)
 │   │   └── TabNav.tsx              # Portfolio / News navigation tabs (client)
 │   ├── dashboard/
 │   │   └── page.tsx                # Portfolio dashboard (server, session-protected)
@@ -91,6 +99,8 @@ src/
 │   │   ├── page.tsx                # News page (server, session-protected)
 │   │   └── components/
 │   │       └── NewsFeed.tsx        # News feed UI (client)
+│   ├── settings/
+│   │   └── page.tsx                # Settings page — name, password, delete account (client)
 │   ├── forgot-password/
 │   │   └── page.tsx                # Forgot password page (sends reset email)
 │   ├── reset-password/
@@ -193,8 +203,8 @@ updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 
 ## Implemented Features
 
-### Portfolio Dashboard (`/`)
-- Fetches all open positions from DB
+### Portfolio Dashboard (`/dashboard`)
+- Fetches all open positions from DB (with source + notes fields)
 - Fetches live prices from Yahoo Finance (current + daily change + weekly change)
 - Fetches EUR/USD and GBP/USD exchange rates
 - Calculates: Total P&L, Daily P&L, Weekly P&L (absolute + %)
@@ -205,6 +215,21 @@ updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 - Multi-currency display: USD, EUR, GBP, GBX (pence) — all converted to GBP for totals
 - Options displayed as: `UNDERLYING STRIKE CALL/PUT EXP`
 - Shows last-updated timestamp
+- Empty state with "Add Position" CTA when user has zero positions
+- UserAvatar in header (initials circle, dropdown with Settings + Sign Out)
+
+### Position Management
+- "Add Position" button (always visible, top-right of filter row)
+- Add Position modal: Ticker, Display Name, Asset Type (Stock/Call/Put toggle), Entry Price, Quantity, Currency (USD/GBP/EUR/GBX), Platform, Strike (options only), Expiry (options only), Source, Notes
+- Edit row action (pencil icon): opens modal pre-filled with current values
+- Delete row action (trash icon): confirm dialog → hard delete
+- All mutations call `PATCH/POST/DELETE /api/positions/[id]` then `router.refresh()` for fresh server data
+
+### Settings Page (`/settings`)
+- Edit display name (via `authClient.updateUser()`)
+- Read-only email display
+- Change password form (via `authClient.changePassword()`)
+- Danger zone: delete account (type "delete" to confirm → `DELETE /api/user/account` → CASCADE deletes all user data)
 
 ### News Page (`/news`)
 - Fetches news articles from the last 7 days
@@ -296,7 +321,9 @@ Files: `.env.local` (dev), `.env.production` and `.env.vercel-prod` (prod).
 - [x] Better Auth — email/password auth, session management, route protection
 - [x] Resend email verification (verification + password reset via noreply@bullist.co)
 - [x] DB rebuild with user_id + RLS (positions scoped per user)
-- [ ] Trade entry form (UI to add new trades)
+- [x] Position management UI (add / edit / delete positions via modal)
+- [x] User avatar menu (initials, settings link, sign out)
+- [x] Settings page (edit name, change password, delete account)
 - [ ] Trade close flow (UI to close positions with exit price)
 - [ ] Trade history view (closed trades archive)
 - [ ] P&L by source breakdown (which friend's picks are performing?)
@@ -329,6 +356,10 @@ Files: `.env.local` (dev), `.env.production` and `.env.vercel-prod` (prod).
 | 2026-03-11 | ticker_summaries recommendation: buy/hold/sell (lowercase) | Simplified from 5-value scale; matches AI prompt and DB constraint |
 | 2026-03-11 | neondb_owner bypasses RLS; explicit WHERE user_id added | Superuser connections bypass Postgres RLS by default; double-filter for safety |
 | 2026-03-11 | Dashboard uses sql.transaction() to set app.current_user_id before query | Correct RLS setup for future non-superuser roles; also filters by user_id explicitly |
+| 2026-03-11 | Position CRUD uses server-side API routes (not server actions) | Consistent with existing REST pattern; simpler auth handling via getSession() |
+| 2026-03-11 | router.refresh() used after mutations (not optimistic UI) | Simpler and reliable; re-runs server component to get fresh data from DB |
+| 2026-03-11 | Account deletion via direct DB DELETE on "user" table | Better Auth deleteUser requires accountDeletion plugin; direct delete + CASCADE is simpler for single-user app |
+| 2026-03-11 | Settings page is fully client-side using useSession() | Avoids server/client split for a simple form page; auth state available via Better Auth React client |
 
 ## When You're Stuck
 

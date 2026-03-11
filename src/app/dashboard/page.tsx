@@ -6,6 +6,7 @@ import { sql, dbError } from '@/lib/db';
 import { fetchQuotes, fetchWeeklyChange, fetchExchangeRates, ExchangeRates } from '@/lib/prices';
 import PortfolioClient, { EnrichedPosition } from '@/app/components/PortfolioClient';
 import TabNav from '@/app/components/TabNav';
+import UserAvatar from '@/app/components/UserAvatar';
 
 interface RawPosition {
   id: string;
@@ -16,6 +17,7 @@ interface RawPosition {
   entry_price: string;
   quantity: string;
   source: string | null;
+  notes: string | null;
   asset_type: 'stock' | 'call' | 'put';
   strike: string | null;
   expiry: unknown; // may be Date object or string from DB driver
@@ -55,7 +57,7 @@ export default async function DashboardPage() {
       sql`SELECT set_config('app.current_user_id', ${userId}, true)`,
       sql`
         SELECT id::text, ticker, display_name, yahoo_ticker, platform, entry_price, quantity,
-               source, asset_type, strike, expiry::text,
+               source, notes, asset_type, strike, expiry::text,
                COALESCE(currency, 'USD') AS currency
         FROM positions
         WHERE user_id = ${userId} AND is_closed = false
@@ -163,6 +165,8 @@ export default async function DashboardPage() {
       asset_type: pos.asset_type,
       strike: pos.strike,
       expiry: expiryDate,
+      source: pos.source,
+      notes: pos.notes,
       currency,
       entry,
       qty,
@@ -202,7 +206,10 @@ export default async function DashboardPage() {
             <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
             <h1 className="text-sm font-semibold tracking-widest text-gray-300 uppercase">Trading Terminal</h1>
           </div>
-          <span className="text-xs text-gray-500">Updated {updatedAt}</span>
+          <div className="flex items-center gap-4">
+            <span className="text-xs text-gray-500">Updated {updatedAt}</span>
+            <UserAvatar name={session.user.name ?? null} />
+          </div>
         </div>
       </header>
 
