@@ -8,7 +8,7 @@ const pool = new Pool({
   max: 10,
 });
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(process.env.RESEND_BULLIST_KEY);
 
 export const auth = betterAuth({
   database: new PostgresDialect({ pool }),

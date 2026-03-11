@@ -91,6 +91,10 @@ src/
 │   │   ├── page.tsx                # News page (server, session-protected)
 │   │   └── components/
 │   │       └── NewsFeed.tsx        # News feed UI (client)
+│   ├── forgot-password/
+│   │   └── page.tsx                # Forgot password page (sends reset email)
+│   ├── reset-password/
+│   │   └── page.tsx                # Reset password page (reads token from URL, sets new password)
 │   ├── sign-in/
 │   │   └── page.tsx                # Sign-in page (email + password form)
 │   ├── sign-up/
@@ -246,7 +250,7 @@ updated_at      TIMESTAMP
 | `BETTER_AUTH_SECRET` | Random 32+ char secret for Better Auth JWT signing |
 | `BETTER_AUTH_URL` | App base URL (`http://localhost:3000` dev / prod URL for Vercel) |
 | `NEXT_PUBLIC_APP_URL` | Same as `BETTER_AUTH_URL` but public (used by auth-client) |
-| `RESEND_API_KEY` | Resend API key — placeholder until Phase 2 |
+| `RESEND_BULLIST_KEY` | Resend API key (env var name is RESEND_BULLIST_KEY) — set in Vercel; add locally to `.env.local` |
 
 Files: `.env.local` (dev), `.env.production` and `.env.vercel-prod` (prod).
 
@@ -294,7 +298,7 @@ Files: `.env.local` (dev), `.env.production` and `.env.vercel-prod` (prod).
 - [x] Token usage tracking for API cost monitoring
 - [x] Vercel deployment (active, with cron)
 - [x] Better Auth — email/password auth, session management, route protection
-- [ ] Resend email verification (Phase 2)
+- [x] Resend email verification (verification + password reset via noreply@bullist.co)
 - [ ] Trade entry form (UI to add new trades)
 - [ ] Trade close flow (UI to close positions with exit price)
 - [ ] Trade history view (closed trades archive)
@@ -322,6 +326,8 @@ Files: `.env.local` (dev), `.env.production` and `.env.vercel-prod` (prod).
 | 2026-03-11 | Better Auth uses pg + Kysely (not @neondatabase/serverless) | Kysely is bundled with better-auth; pg used for auth routes only; app queries still use @neondatabase/serverless |
 | 2026-03-11 | Dashboard moved from / to /dashboard | Required by Better Auth middleware redirect target; root / now redirects to /dashboard |
 | 2026-03-11 | emailVerification is a top-level betterAuth option, not a plugin | Task card example was wrong; actual API uses `emailVerification: { sendVerificationEmail: ... }` |
+| 2026-03-11 | Resend sender: noreply@bullist.co | Domain is bullist.co; must be verified in Resend dashboard |
+| 2026-03-11 | Resend env var named RESEND_BULLIST_KEY (not RESEND_API_KEY) | Operator set it with this name in Vercel; code updated to match |
 
 ## When You're Stuck
 
