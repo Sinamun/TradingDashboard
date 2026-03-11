@@ -15,7 +15,7 @@ interface YahooNewsItem {
 export async function scrapeNewsForTicker(ticker: string, companyName: string): Promise<RawArticle[]> {
   // Use Yahoo Finance search API for news — reliable from server-side
   const query = encodeURIComponent(ticker);
-  const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${query}&newsCount=10`;
+  const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${query}&newsCount=50`;
 
   let newsItems: YahooNewsItem[] = [];
   try {
