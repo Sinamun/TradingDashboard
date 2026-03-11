@@ -23,7 +23,7 @@ export async function scrapeNewsForTicker(ticker: string, companyName: string): 
 
   // Search for today's news using Brave News Search API
   const query = encodeURIComponent(`${ticker} ${companyName} stock`);
-  const url = `https://api.search.brave.com/res/v1/news/search?q=${query}&count=20&freshness=pd`;
+  const url = `https://api.search.brave.com/res/v1/news/search?q=${query}&count=5&freshness=pd`;
 
   let results: BraveNewsResult[] = [];
   try {
