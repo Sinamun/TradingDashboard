@@ -1,5 +1,7 @@
 export const dynamic = 'force-dynamic';
 
+import { redirect } from 'next/navigation';
+import { getSession } from '@/lib/session';
 import { sql, dbError } from '@/lib/db';
 import TabNav from '@/app/components/TabNav';
 import NewsFeed from '@/app/news/components/NewsFeed';
@@ -39,6 +41,9 @@ export interface TokenUsageRow extends TokenUsage {
 }
 
 export default async function NewsPage() {
+  const session = await getSession();
+  if (!session) redirect('/sign-in');
+
   if (!sql) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
