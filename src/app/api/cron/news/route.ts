@@ -135,6 +135,7 @@ export async function GET(req: NextRequest) {
 
   // Backfill: analyse any existing articles with null sentiment
   let articlesBackfilled = 0;
+  let backfillAttempted = 0;
   try {
     const unanalysed = (await sql`
       SELECT id, ticker, title FROM news_articles
@@ -143,12 +144,14 @@ export async function GET(req: NextRequest) {
       LIMIT 100
     `) as Array<{ id: number; ticker: string; title: string }>;
 
+    backfillAttempted = unanalysed.length;
     for (const article of unanalysed) {
       const info = tickerMap.get(article.ticker);
       const companyName = info?.companyName ?? article.ticker;
 
       await sleep(200);
       const sentiment = await analyseArticle(article.ticker, companyName, article.title);
+      console.log(`[backfill] ${article.ticker}: sentiment=${sentiment.sentiment}, confidence=${sentiment.confidence}`);
 
       if (sentiment.sentiment !== null) {
         try {
@@ -179,6 +182,8 @@ export async function GET(req: NextRequest) {
     articlesNew,
     articlesAnalysed,
     articlesBackfilled,
+    backfillAttempted,
+    hasOpenAIKey: !!process.env.OPENAI_KEY,
     completedAt: new Date().toISOString(),
   });
 }
