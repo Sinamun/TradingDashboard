@@ -247,8 +247,8 @@ export default function NewsFeed({ articles }: { articles: NewsArticle[] }) {
   }, {});
 
   const sortedTickers = Object.keys(groups).sort((a, b) => {
-    const latestA = groups[a][0]?.published_at ?? '';
-    const latestB = groups[b][0]?.published_at ?? '';
+    const latestA = String(groups[a][0]?.published_at ?? '');
+    const latestB = String(groups[b][0]?.published_at ?? '');
     return latestB.localeCompare(latestA);
   });
 
