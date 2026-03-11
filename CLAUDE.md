@@ -64,7 +64,7 @@ A personal trading portfolio dashboard for Sina — one user, not a SaaS product
 |-------|--------|
 | Frontend | Next.js 16 (App Router) + TypeScript 5 + Tailwind CSS 4 |
 | Database | Neon (serverless Postgres) |
-| Auth | Neon Auth (Stack Auth / `@stackframe/stack`) |
+| Auth | Better Auth (`better-auth`) — self-hosted, tables in Neon |
 | Hosting | Vercel |
 | Price Data | Yahoo Finance (unofficial API via chart endpoint) |
 | News | Brave News Search API |
@@ -77,35 +77,42 @@ A personal trading portfolio dashboard for Sina — one user, not a SaaS product
 src/
 ├── app/
 │   ├── api/
+│   │   ├── auth/
+│   │   │   └── [...all]/
+│   │   │       └── route.ts        # Better Auth Next.js handler (all auth endpoints)
 │   │   └── cron/
 │   │       └── news/route.ts       # Daily news scraping + AI analysis cron
 │   ├── components/
 │   │   ├── PortfolioClient.tsx     # Interactive portfolio table (client)
 │   │   └── TabNav.tsx              # Portfolio / News navigation tabs (client)
-│   ├── handler/
-│   │   └── [...stack]/
-│   │       └── page.tsx            # Stack Auth handler (OAuth callbacks, magic links)
+│   ├── dashboard/
+│   │   └── page.tsx                # Portfolio dashboard (server, session-protected)
 │   ├── news/
-│   │   ├── page.tsx                # News page (server)
+│   │   ├── page.tsx                # News page (server, session-protected)
 │   │   └── components/
 │   │       └── NewsFeed.tsx        # News feed UI (client)
 │   ├── sign-in/
-│   │   └── page.tsx                # Sign-in page (Stack Auth SignIn component)
+│   │   └── page.tsx                # Sign-in page (email + password form)
 │   ├── sign-up/
-│   │   └── page.tsx                # Sign-up page (Stack Auth SignUp component)
-│   ├── page.tsx                    # Portfolio dashboard (server)
-│   ├── layout.tsx                  # Root layout — StackProvider + StackTheme wrapper
+│   │   └── page.tsx                # Sign-up page (name + email + password form)
+│   ├── verify-email/
+│   │   └── page.tsx                # "Check your inbox" page + resend button
+│   ├── page.tsx                    # Root — redirects to /dashboard
+│   ├── layout.tsx                  # Root layout (no auth wrapper needed)
 │   └── globals.css
 ├── lib/
+│   ├── auth.ts                     # Better Auth server instance (betterAuth config)
+│   ├── auth-client.ts              # Better Auth React client (signIn, signUp, signOut, useSession)
+│   ├── session.ts                  # getSession() server helper
 │   ├── db.ts                       # Neon connection
 │   ├── prices.ts                   # Yahoo Finance price fetching
 │   ├── news.ts                     # Brave News Search API integration
-│   ├── sentiment.ts                # OpenAI GPT-4o sentiment + summaries
-│   └── stack.ts                    # Stack Auth server app instance
-└── middleware.ts                   # Route protection — redirects unauthenticated to /sign-in
+│   └── sentiment.ts                # OpenAI GPT-4o sentiment + summaries
+└── middleware.ts                   # Route protection — uses getSessionCookie from better-auth/cookies
 
 scripts/
-├── migrate.ts                      # DB schema creation (run with tsx)
+├── migrate.ts                      # App DB schema creation (run with tsx)
+├── migrate-auth.ts                 # Better Auth table migration (run once; already applied)
 └── seed.ts                         # Sample data insertion
 
 vercel.json                         # Cron job schedule config
@@ -236,9 +243,10 @@ updated_at      TIMESTAMP
 | `BRAVE_BROWSER_SEARCH` | Brave News Search API key |
 | `OPENAI_KEY` | OpenAI API key (GPT-4o) |
 | `CRON_SECRET` | Optional Bearer token for cron auth |
-| `NEXT_PUBLIC_STACK_PROJECT_ID` | Stack Auth project ID (from Neon Console → Auth tab) |
-| `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` | Stack Auth publishable client key |
-| `STACK_SECRET_SERVER_KEY` | Stack Auth secret server key |
+| `BETTER_AUTH_SECRET` | Random 32+ char secret for Better Auth JWT signing |
+| `BETTER_AUTH_URL` | App base URL (`http://localhost:3000` dev / prod URL for Vercel) |
+| `NEXT_PUBLIC_APP_URL` | Same as `BETTER_AUTH_URL` but public (used by auth-client) |
+| `RESEND_API_KEY` | Resend API key — placeholder until Phase 2 |
 
 Files: `.env.local` (dev), `.env.production` and `.env.vercel-prod` (prod).
 
@@ -285,6 +293,8 @@ Files: `.env.local` (dev), `.env.production` and `.env.vercel-prod` (prod).
 - [x] Daily cron job for news scraping + AI analysis
 - [x] Token usage tracking for API cost monitoring
 - [x] Vercel deployment (active, with cron)
+- [x] Better Auth — email/password auth, session management, route protection
+- [ ] Resend email verification (Phase 2)
 - [ ] Trade entry form (UI to add new trades)
 - [ ] Trade close flow (UI to close positions with exit price)
 - [ ] Trade history view (closed trades archive)
@@ -308,8 +318,10 @@ Files: `.env.local` (dev), `.env.production` and `.env.vercel-prod` (prod).
 | 2026-03-11 | 5 articles per ticker per day | Balance between coverage and API cost |
 | 2026-03-11 | Token usage logging added | Track OpenAI costs per day |
 | 2026-03-11 | Date tabs for news (client-side filtering) | Better UX — no extra DB queries per tab |
-| 2026-03-11 | Auth: Neon Auth (Stack Auth) via `@stackframe/stack` | Integrates with Neon DB; provides `neon_auth.users_sync` table; tokenStore `"nextjs-cookie"` |
-| 2026-03-11 | Middleware reads `stack-refresh-<projectId>--default` cookie | Stack Auth stores refresh token in this cookie; sufficient for Edge middleware auth check without full token validation |
+| 2026-03-11 | Auth: switched from Stack Auth → Better Auth | Better Auth is fully self-hosted; no external auth SaaS needed; tables live in our own Neon DB |
+| 2026-03-11 | Better Auth uses pg + Kysely (not @neondatabase/serverless) | Kysely is bundled with better-auth; pg used for auth routes only; app queries still use @neondatabase/serverless |
+| 2026-03-11 | Dashboard moved from / to /dashboard | Required by Better Auth middleware redirect target; root / now redirects to /dashboard |
+| 2026-03-11 | emailVerification is a top-level betterAuth option, not a plugin | Task card example was wrong; actual API uses `emailVerification: { sendVerificationEmail: ... }` |
 
 ## When You're Stuck
 
