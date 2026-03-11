@@ -12,12 +12,45 @@ This project is managed by **TradeBot** (an OpenClaw orchestrator agent) and bui
 - Stay focused on the codebase and technical execution
 - Report back what you built, what changed, and any blockers
 - Commit frequently with clear messages
+- **Keep CLAUDE.md up to date** — see rule below
 
 ### What you don't do:
 - Make product decisions — ask if scope is unclear
 - Skip acceptance criteria — every task card defines "done"
 - Assume your work is complete without checking the criteria
 - Refactor unrelated code unless asked to
+
+---
+
+## CLAUDE.md Maintenance Rule
+
+**You MUST update this file as part of completing any task that changes the following:**
+
+| Category | Examples that require an update |
+|----------|--------------------------------|
+| Database schema | New table, new column, dropped column, renamed field, changed type or constraint |
+| API routes | New route, changed request/response shape, removed route, auth changes |
+| External integrations | New API or service added, switched provider, changed auth method |
+| Core libraries / `lib/` | New file, changed function signatures, new utility |
+| Pages / features | New page, new UI feature, removed feature |
+| Architecture | New component pattern, new data flow, rendering strategy change |
+| Environment variables | New var required, var renamed, var removed |
+| Infrastructure | Cron schedule change, new Vercel config, deployment change |
+| Tech stack | Package added/removed, version upgrade with behaviour change |
+| Decisions | Any significant "why did we do it this way" choice |
+
+**When to update:** Before committing — CLAUDE.md should be accurate at the time of every commit that touches the above.
+
+**What to update:**
+- **Project Structure** — add/remove/rename files
+- **Database Schema** — reflect the actual current schema exactly
+- **Implemented Features** — mark features done, add new ones
+- **Status Checklist** — tick off completed items
+- **Decisions Log** — add a row with the date, decision, and context
+- **Environment Variables** — add any new required vars
+- Any other section that is now inaccurate
+
+**Do not wait to be asked.** Keeping CLAUDE.md current is part of the definition of done for every task.
 
 ---
 
@@ -29,48 +62,185 @@ A personal trading portfolio dashboard for Sina — one user, not a SaaS product
 
 | Layer | Choice |
 |-------|--------|
-| Frontend | Next.js (App Router) + TypeScript + Tailwind CSS |
+| Frontend | Next.js 16 (App Router) + TypeScript 5 + Tailwind CSS 4 |
 | Database | Neon (serverless Postgres) |
+| Auth | Neon Auth (Stack Auth / `@stackframe/stack`) |
 | Hosting | Vercel |
+| Price Data | Yahoo Finance (unofficial API via chart endpoint) |
+| News | Brave News Search API |
+| AI | OpenAI GPT-4o (sentiment analysis + ticker summaries) |
 | Repo | [github.com/Pello-Co/TradingDashboard](https://github.com/Pello-Co/TradingDashboard) |
 
-## Core Features
+## Project Structure
 
-### Portfolio Dashboard
-- Overview of all open positions with live/recent prices
-- Entry price, current price, P&L (absolute + %), position size
-- Colour-coded (green/red) for quick scanning
-- Total portfolio value and overall P&L
+```
+src/
+├── app/
+│   ├── api/
+│   │   └── cron/
+│   │       └── news/route.ts       # Daily news scraping + AI analysis cron
+│   ├── components/
+│   │   ├── PortfolioClient.tsx     # Interactive portfolio table (client)
+│   │   └── TabNav.tsx              # Portfolio / News navigation tabs (client)
+│   ├── handler/
+│   │   └── [...stack]/
+│   │       └── page.tsx            # Stack Auth handler (OAuth callbacks, magic links)
+│   ├── news/
+│   │   ├── page.tsx                # News page (server)
+│   │   └── components/
+│   │       └── NewsFeed.tsx        # News feed UI (client)
+│   ├── sign-in/
+│   │   └── page.tsx                # Sign-in page (Stack Auth SignIn component)
+│   ├── sign-up/
+│   │   └── page.tsx                # Sign-up page (Stack Auth SignUp component)
+│   ├── page.tsx                    # Portfolio dashboard (server)
+│   ├── layout.tsx                  # Root layout — StackProvider + StackTheme wrapper
+│   └── globals.css
+├── lib/
+│   ├── db.ts                       # Neon connection
+│   ├── prices.ts                   # Yahoo Finance price fetching
+│   ├── news.ts                     # Brave News Search API integration
+│   ├── sentiment.ts                # OpenAI GPT-4o sentiment + summaries
+│   └── stack.ts                    # Stack Auth server app instance
+└── middleware.ts                   # Route protection — redirects unauthenticated to /sign-in
 
-### Trade Log
-- Record new trades: ticker, entry price, size, date, direction (long/short)
-- **Source tracking** — who recommended the trade (friend's name)
-- Thesis/notes field for each trade
-- Close trades with exit price, calculate realised P&L
+scripts/
+├── migrate.ts                      # DB schema creation (run with tsx)
+└── seed.ts                         # Sample data insertion
 
-### Reminders
-- Set reminders on specific positions (e.g. "close by March 20")
-- Reminders trigger notifications via Telegram bot
-- Visual indicator on dashboard for positions with active reminders
-
-### Trade History
-- Closed trades archive with full details
-- P&L breakdown by source (which friend's picks are performing?)
-- Lessons learned field per trade
-
-## Data Model
-
-```sql
-trades:
-  id, ticker, direction, entry_price, exit_price, size,
-  opened_at, closed_at, status (open/closed),
-  source (who recommended), thesis, notes
-
-reminders:
-  id, trade_id, reminder_date, message, status (pending/sent/dismissed)
+vercel.json                         # Cron job schedule config
 ```
 
-This is the initial schema. It will evolve — but changes should be backwards-compatible or include migrations.
+## Database Schema
+
+### `positions` table — open and closed trading positions
+```sql
+id              SERIAL PRIMARY KEY
+ticker          VARCHAR(20) NOT NULL          -- Display ticker (e.g. AAPL)
+name            VARCHAR(100)                  -- Company name
+yahoo_ticker    VARCHAR(30)                   -- Yahoo Finance ticker (may differ)
+platform        VARCHAR(20)                   -- freetrade | trading212 | ibkr | crypto
+direction       VARCHAR(10) DEFAULT 'long'    -- long | short
+entry_price     DECIMAL(18,8)
+quantity        DECIMAL(18,8)
+opened_at       TIMESTAMP
+closed_at       TIMESTAMP                     -- NULL if open
+exit_price      DECIMAL(18,8)                 -- NULL if open
+status          VARCHAR(10)                   -- open | closed
+source          VARCHAR(100)                  -- Who recommended the trade
+thesis          TEXT
+notes           TEXT
+asset_type      VARCHAR(10)                   -- stock | option
+option_type     VARCHAR(10)                   -- call | put (options only)
+strike_price    DECIMAL(18,8)                 -- options only
+expiry_date     DATE                          -- options only
+underlying_ticker VARCHAR(30)                 -- options only
+currency        VARCHAR(10) DEFAULT 'USD'     -- USD | EUR | GBP | GBX
+created_at      TIMESTAMP
+updated_at      TIMESTAMP
+```
+
+### `news_articles` table — AI-analysed news per ticker
+```sql
+id                  SERIAL PRIMARY KEY
+ticker              VARCHAR(20)
+title               TEXT
+url                 TEXT UNIQUE
+source              VARCHAR(100)
+published_at        TIMESTAMP
+sentiment           VARCHAR(10)               -- bullish | bearish | neutral
+sentiment_confidence DECIMAL(3,2)            -- 0.0–1.0
+summary             TEXT                      -- AI-generated 1-sentence summary
+impact              VARCHAR(10)               -- high | medium | low
+relevance           VARCHAR(10)               -- high | medium | low
+tags                TEXT[]                    -- e.g. ['earnings', 'macro']
+raw_title           TEXT
+created_at          TIMESTAMP
+updated_at          TIMESTAMP
+```
+
+### `ticker_summaries` table — daily AI summary per ticker
+```sql
+id              SERIAL PRIMARY KEY
+ticker          VARCHAR(20)
+date            DATE DEFAULT CURRENT_DATE
+overall_summary TEXT
+recommendation  VARCHAR(20)                   -- Strong Buy | Buy | Hold | Sell | Strong Sell
+risks           TEXT
+catalysts       TEXT
+created_at      TIMESTAMP
+updated_at      TIMESTAMP
+UNIQUE(ticker, date)
+```
+
+### `token_usage_log` table — daily OpenAI API cost tracking
+```sql
+id              SERIAL PRIMARY KEY
+date            DATE UNIQUE
+input_tokens    INTEGER DEFAULT 0
+output_tokens   INTEGER DEFAULT 0
+api_calls       INTEGER DEFAULT 0
+created_at      TIMESTAMP
+updated_at      TIMESTAMP
+```
+
+## Implemented Features
+
+### Portfolio Dashboard (`/`)
+- Fetches all open positions from DB
+- Fetches live prices from Yahoo Finance (current + daily change + weekly change)
+- Fetches EUR/USD and GBP/USD exchange rates
+- Calculates: Total P&L, Daily P&L, Weekly P&L (absolute + %)
+- Summary cards: Portfolio Value, Total P&L, Daily P&L, Weekly P&L (all in GBP)
+- Filterable by asset type (All / Stocks / Options) and platform (All / FreeTrade / Trading212 / IBKR / Crypto)
+- Sortable columns: Ticker, Market Value, Total P&L %, Daily P&L %, Weekly P&L %
+- Colour-coded P&L (green/red)
+- Multi-currency display: USD, EUR, GBP, GBX (pence) — all converted to GBP for totals
+- Options displayed as: `UNDERLYING STRIKE CALL/PUT EXP`
+- Shows last-updated timestamp
+
+### News Page (`/news`)
+- Fetches news articles from the last 7 days
+- Fetches AI ticker summaries from the last 6 days
+- Fetches token usage logs for cost visibility
+- Date tabs (last 7 days) with client-side filtering
+- Ticker filter pills — click to filter by ticker
+- Sentiment filter pills (All / Bullish / Bearish / Neutral)
+- Grouped cards per ticker with sentiment breakdown counts
+- AI ticker summary panel: overall_summary, recommendation badge, risks, catalysts
+- Expandable article lists (3 shown by default, expand to see all)
+- Each article: title, source, relative time, AI summary, tags, sentiment pill
+- Token usage footer: daily input/output tokens + API call count
+- Empty state messages for no articles / no filtered results
+
+### News Cron Job (`/api/cron/news`)
+- Runs daily at 14:00 UTC via Vercel cron (configured in `vercel.json`)
+- Optional Bearer token auth via `CRON_SECRET` env var
+- Flow:
+  1. Fetch all open positions; deduplicate tickers (options → underlying ticker)
+  2. Scrape up to 5 articles per ticker via Brave News Search API (freshness: past day)
+  3. Filter out already-stored URLs
+  4. Insert new articles (sentiment fields NULL initially)
+  5. Run GPT-4o sentiment analysis per article (200ms delay between calls)
+  6. Update articles with: sentiment, confidence, summary, impact, relevance, tags
+  7. Generate overall ticker summary (recommendation + risks + catalysts)
+  8. Backfill any existing articles still missing sentiment analysis
+  9. Log token usage to `token_usage_log`
+- Returns JSON: `{ tickersProcessed, articlesFound, articlesNew, articlesAnalysed, articlesBackfilled, tokens }`
+
+## Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Neon PostgreSQL connection string |
+| `BRAVE_BROWSER_SEARCH` | Brave News Search API key |
+| `OPENAI_KEY` | OpenAI API key (GPT-4o) |
+| `CRON_SECRET` | Optional Bearer token for cron auth |
+| `NEXT_PUBLIC_STACK_PROJECT_ID` | Stack Auth project ID (from Neon Console → Auth tab) |
+| `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` | Stack Auth publishable client key |
+| `STACK_SECRET_SERVER_KEY` | Stack Auth secret server key |
+
+Files: `.env.local` (dev), `.env.production` and `.env.vercel-prod` (prod).
 
 ## Infrastructure
 
@@ -78,24 +248,24 @@ This is the initial schema. It will evolve — but changes should be backwards-c
 |---------|-----------------|
 | GitHub | Pello-Co |
 | Vercel | sina-2972 |
-| Neon | CLI installed (v2.21.0), auth needs verification |
+| Neon | Serverless Postgres — connection active |
+| Brave Search | API key in env |
+| OpenAI | GPT-4o — key in env |
 
 ## Broader System Context
 
-This dashboard is part of a larger setup:
-
 - **TradeBot** (OpenClaw agent) handles daily research, price checks, trade analysis, and Telegram notifications for Sina.
 - The dashboard is the **visual layer** — TradeBot is the **intelligence layer**.
-- Eventually, TradeBot will read from and write to the same Neon database to keep portfolio state in sync.
+- TradeBot will read from and write to the same Neon database to keep portfolio state in sync.
 - Reminders set in the dashboard should be surfaceable by TradeBot via Telegram.
-- The dashboard and TradeBot share the same data model — keep this in mind when making schema decisions.
+- The dashboard and TradeBot share the same data model — keep schema decisions compatible.
 
 ## Coding Standards
 
 - **TypeScript** — strict mode, no `any` unless truly unavoidable
 - **Tailwind CSS** — no custom CSS files unless there's a good reason
-- **Next.js App Router** — use server components by default, client components only when needed (interactivity, hooks)
-- **Database queries** — use parameterised queries, never string concatenation
+- **Next.js App Router** — server components by default, client components only for interactivity/hooks
+- **Database queries** — parameterised queries only, never string concatenation
 - **Error handling** — surface errors clearly in the UI, log them server-side
 - **Commits** — small, frequent, with clear messages describing what changed and why
 - **No premature abstraction** — keep it simple until complexity demands otherwise
@@ -104,16 +274,22 @@ This dashboard is part of a larger setup:
 ## Status Checklist
 
 - [x] Repo created
-- [ ] Neon database setup
-- [ ] Project scaffolding (Next.js + Tailwind + TypeScript)
-- [ ] Core data model + migrations
-- [ ] Dashboard UI (portfolio overview)
-- [ ] Trade entry form
-- [ ] Trade close flow
-- [ ] Trade history view
-- [ ] P&L by source breakdown
+- [x] Neon database setup + connection
+- [x] Project scaffolding (Next.js + Tailwind + TypeScript)
+- [x] Core data model + migrations (positions, news_articles, ticker_summaries, token_usage_log)
+- [x] Dashboard UI (portfolio overview with live prices + P&L)
+- [x] Multi-currency support (USD / EUR / GBP / GBX)
+- [x] Options support (call/put with strike, expiry, underlying)
+- [x] Platform filtering (FreeTrade / Trading212 / IBKR / Crypto)
+- [x] News page with AI sentiment analysis (Brave News + GPT-4o)
+- [x] Daily cron job for news scraping + AI analysis
+- [x] Token usage tracking for API cost monitoring
+- [x] Vercel deployment (active, with cron)
+- [ ] Trade entry form (UI to add new trades)
+- [ ] Trade close flow (UI to close positions with exit price)
+- [ ] Trade history view (closed trades archive)
+- [ ] P&L by source breakdown (which friend's picks are performing?)
 - [ ] Reminder system + Telegram integration
-- [ ] Vercel deployment
 - [ ] TradeBot ↔ Dashboard data sync
 
 ## Decisions Log
@@ -124,6 +300,16 @@ This dashboard is part of a larger setup:
 | 2026-03-10 | Trade sources = friends (track by name) | Sina's trade ideas come from friends |
 | 2026-03-10 | Reminders via Telegram | Sina's preferred channel |
 | 2026-03-10 | Stack: Next.js + Neon + Vercel | Fast to ship, serverless, low maintenance |
+| 2026-03-11 | Positions table replaces trades table | Richer schema: platforms, asset types, currency, options fields |
+| 2026-03-11 | Multi-currency support (USD/EUR/GBP/GBX) | Sina trades across UK and US markets |
+| 2026-03-11 | Options support added | Calls and puts with strike, expiry, underlying ticker |
+| 2026-03-11 | News scraper: Google News RSS → Yahoo Finance → Brave Search | Brave gives better coverage and freshness filtering |
+| 2026-03-11 | AI sentiment: switched to OpenAI GPT-4o | Better quality than previous GLM model |
+| 2026-03-11 | 5 articles per ticker per day | Balance between coverage and API cost |
+| 2026-03-11 | Token usage logging added | Track OpenAI costs per day |
+| 2026-03-11 | Date tabs for news (client-side filtering) | Better UX — no extra DB queries per tab |
+| 2026-03-11 | Auth: Neon Auth (Stack Auth) via `@stackframe/stack` | Integrates with Neon DB; provides `neon_auth.users_sync` table; tokenStore `"nextjs-cookie"` |
+| 2026-03-11 | Middleware reads `stack-refresh-<projectId>--default` cookie | Stack Auth stores refresh token in this cookie; sufficient for Edge middleware auth check without full token validation |
 
 ## When You're Stuck
 
