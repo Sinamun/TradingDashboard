@@ -128,7 +128,7 @@ A personal trading portfolio dashboard for Sina — one user, not a SaaS product
 | Price Data | Yahoo Finance (unofficial API via chart endpoint) |
 | News | Brave News Search API |
 | AI | OpenAI GPT-4o (sentiment analysis + ticker summaries) |
-| Repo | [github.com/Pello-Co/TradingDashboard](https://github.com/Pello-Co/TradingDashboard) |
+| Repo | [github.com/Sinamun/TradingDashboard](https://github.com/Sinamun/TradingDashboard) |
 
 ## Project Structure
 
@@ -338,7 +338,7 @@ Files: `.env.local` (dev), `.env.production` and `.env.vercel-prod` (prod).
 
 | Service | Account / Detail |
 |---------|-----------------|
-| GitHub | Pello-Co |
+| GitHub | Sinamun (syamani95@gmail.com) |
 | Vercel | sina-2972 |
 | Neon | Serverless Postgres — connection active |
 | Brave Search | API key in env |
@@ -394,6 +394,7 @@ Files: `.env.local` (dev), `.env.production` and `.env.vercel-prod` (prod).
 | Date | Decision | Context |
 |------|----------|---------|
 | 2026-03-10 | Repo created as Pello-Co/TradingDashboard | — |
+| 2026-04-07 | Repo moved to Sinamun/TradingDashboard | GitHub account change; remote updated to HTTPS; git author set to syamani95@gmail.com / Sina Yamani; gh auth used (not SSH) |
 | 2026-03-10 | Trade sources = friends (track by name) | Sina's trade ideas come from friends |
 | 2026-03-10 | Reminders via Telegram | Sina's preferred channel |
 | 2026-03-10 | Stack: Next.js + Neon + Vercel | Fast to ship, serverless, low maintenance |
